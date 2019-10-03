@@ -28,7 +28,13 @@ def parse_args():
 
 
 if __name__ == '__main__':
+    import sys
+
     args = parse_args()
+    if args.stderr:
+        sys.stderr = open(args.stderr, 'w')
+    if args.stdout:
+        sys.stdout = open(args.stdout, 'w')
 
     handlers.app.run(
         host=args.host, port=args.port,
