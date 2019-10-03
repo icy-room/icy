@@ -1,5 +1,4 @@
 import argparse
-from icyclient import handlers
 
 
 def parse_args():
@@ -35,6 +34,8 @@ if __name__ == '__main__':
         sys.stderr = open(args.stderr, 'w')
     if args.stdout:
         sys.stdout = open(args.stdout, 'w')
+
+    from icyclient import handlers
 
     handlers.app.run(
         host=args.host, port=args.port,
