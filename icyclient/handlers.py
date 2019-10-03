@@ -2,6 +2,7 @@ import logging
 import functools
 import json
 import sys
+import os
 
 from bottle import Bottle, request, response
 
@@ -108,7 +109,8 @@ def debug_info():
 @app.post('/shutdown')
 def shutdown():
     LOGGER.info('Received shutdown request')
-    return 'true'
+    # TODO: shutdown gracefully
+    os._exit(0)
 
 
 @app.post('/receive_messages')
