@@ -1,4 +1,5 @@
 import logging
+import requests
 import functools
 import json
 import sys
@@ -22,9 +23,10 @@ def jsonify(f):
 
 
 @app.post('/event_notification')
+@jsonify
 def event_notification():
     LOGGER.info('Received event notification')
-    return '[]'
+    return []
 
 
 @app.post('/run_completer_command')
@@ -36,15 +38,9 @@ def run_completer_command():
 
 
 @app.post('/completions')
-@jsonify
 def get_completions():
-    LOGGER.info('Received completion request')
-    return {"completions": [{"insertion_text": "item 1"},
-                            {"insertion_text": "item 2"},
-                            {"insertion_text": "item 3"},
-                            {"insertion_text": "It works"}],
-            "completion_start_column": 1,
-            "errors": []}
+    response = requests.post('http://localhost:10086/completions', request.body.read())
+    return response.text
 
 
 @app.post('/filter_and_sort_candidates')

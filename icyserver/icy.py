@@ -5,6 +5,7 @@ from transformers import TFGPT2LMHeadModel as GPT2Model, GPT2Tokenizer
 
 import tensorflow as tf
 
+
 def select(tensor, paths):
     if isinstance(tensor, (tuple, list)):
         return [select(t, paths) for t in tensor]
@@ -21,21 +22,20 @@ def top_k_beams(accumu_probs, logits, k):
     return paths, tokens, accumu_probs
 
 
-
 class Icy:
     def __init__(self, model_name):
         self.model = GPT2Model.from_pretrained(model_name)
         self.tokenizer = GPT2Tokenizer.from_pretrained(model_name)
-        self.max_context_size = 1000
+        self.max_context_size = 200
         self.predict_len = 5
         self.beam_size = 8
 
     def predict(self, context):
         context_ids = self.tokenizer.encode(context)
-        self.clen = len(context_ids)
-        x = tf.constant(context_ids[-self.max_context_size:], dtype=tf.int32)
+        x = tf.constant(context_ids[-self.max_context_size:-1], dtype=tf.int32)
         y = self._predict(x)
-        return [self.tokenizer.decode(i) for i in y.numpy()[:, -self.predict_len:]]
+        last_token_len = len(self.tokenizer.decode(context_ids[-1:]))
+        return last_token_len, [self.tokenizer.decode(i) for i in y.numpy()[:, -self.predict_len:]]
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.int32)])
     def _predict(self, context_ids):
@@ -78,7 +78,6 @@ class Icy:
     def print_tokens(self, context_ids):
         print('==========')
         for j, line in enumerate(context_ids):
-            line = line[self.clen:]
             print(f'--{j}--')
             print(list(line.numpy()))
             print(self.tokenizer.decode(line.numpy()))
@@ -88,10 +87,10 @@ if __name__ == '__main__':
     import time
 
     icy = Icy('gpt2-medium')
-    icy.predict('x')
+    icy.predict('x a')
 
     t0 = time.time()
-    candidates = icy.predict('''class Cat:
+    n, candidates = icy.predict('''class Cat:
 name: str
 age: int
 
