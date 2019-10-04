@@ -34,8 +34,9 @@ class Icy:
         if len(context_ids) <= 1:
             return 0, []
         # the last token may incomplete, we need to estimate it
-        tokens, probs, past = self.estimate_first(context_ids)
-        return 0, tokens
+        x = tf.constant(context_ids[-self.max_context_size:], dtype=tf.int32)
+        tokens, probs, past = self.estimate_first(x)
+        return 0, self.tokenizer.convert_ids_to_tokens(tokens)
         x = tf.constant(context_ids[-self.max_context_size:-1], dtype=tf.int32)
         y = self._predict(x)
         last_token_len = len(self.tokenizer.decode(context_ids[-1:]))
