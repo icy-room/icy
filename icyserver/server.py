@@ -36,8 +36,9 @@ def completions():
     if history:  # interactive bash
         context = history + "#!bin/sh\n" + context
     t0 = time.time()
+    print(f'context: {context}')
     n, items = app.icy.predict(context)
-    print(f'cost {time.time()-t0} seconds')
+    print(f'cost {time.time()-t0} seconds, items: {items!r}')
     completions = [
         {"insertion_text": item.splitlines(keepends=False)[0]}
             for item in items
