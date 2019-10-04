@@ -5,10 +5,22 @@ import tensorflow as tf
 from transformers import TFGPT2LMHeadModel as GPT2Model, GPT2Tokenizer
 
 
-def select(tensor, paths):
-    if isinstance(tensor, (tuple, list)):
-        return [select(t, paths) for t in tensor]
-    return tf.gather_nd(tensor, paths[:, tf.newaxis])
+def select(tensor, paths, *, axis=0):
+    paths = paths[:, tf.newaxis]
+    if isinstance(tensor, (list, tuple)):
+        tensor = tf.stack(tensor, axis=0)
+    if axis == 0:
+        return tf.gather_nd(tensor, paths)
+    if axis == 1:
+        return tf.gather_nd(tensor, [paths] * tensor.shape[0], batch_dims=axis)
+    raise NotImplementedError
+
+
+def choose_top_1(accumu_probs, logits):
+    softmaxes = tf.nn.log_softmax(logits)
+    probs, indexes = tf.nn.top_k(softmaxes, k=1)
+    accumu_probs = accumu_probs + probs[:, 0]
+    return indexes[:, 0], accumu_probs
 
 
 def top_k_beams(accumu_probs, logits, k):
@@ -21,94 +33,110 @@ def top_k_beams(accumu_probs, logits, k):
     return paths, tokens, accumu_probs
 
 
-class Icy:
-    def __init__(self, model_name):
-        self.model = GPT2Model.from_pretrained(model_name)
-        self.tokenizer = GPT2Tokenizer.from_pretrained(model_name)
-        self.max_context_size = 200
-        self.predict_len = 5
-        self.beam_size = 8
+def get_past_shape(hparams, batch_size=None, sequence=None):
+    return [hparams.n_layer, batch_size, 2, hparams.n_head, sequence, hparams.n_embd // hparams.n_head]
 
-    def predict(self, context):
-        context_ids = self.tokenizer.encode(context)
-        if len(context_ids) <= 1:
-            return 0, []
-        # the last token may incomplete, we need to estimate it
-        x = tf.constant(context_ids[-self.max_context_size:], dtype=tf.int32)
-        tokens, probs, past = self.estimate_first(x)
-        return 0, self.tokenizer.convert_ids_to_tokens(tokens)
-        x = tf.constant(context_ids[-self.max_context_size:-1], dtype=tf.int32)
-        y = self._predict(x)
-        last_token_len = len(self.tokenizer.decode(context_ids[-1:]))
-        return last_token_len, [self.tokenizer.decode(i) for i in y.numpy()[:, -self.predict_len:]]
+def new_icy(model_name):
+    model = GPT2Model.from_pretrained(model_name)
+    tokenizer = GPT2Tokenizer.from_pretrained(model_name)
 
-    def estimate_first(self, context_ids):
-        last_token = self.tokenizer.convert_ids_to_tokens(context_ids[-1])
-        context_ids = context_ids[None, :]
-        logits, past = self.model(context_ids[:, :-1], past=None)
-        logits = logits[:, -1]
-        probs = tf.nn.log_softmax(logits)
-        probs, indexes = tf.nn.top_k(probs, k=10000)
-        accumu_probs = []
-        candidates = []
-        for tk_id, p in zip(indexes[0], probs[0]):
-            token = self.tokenizer.convert_ids_to_tokens(int(tk_id))
-            if token.startswith(last_token):
-                candidates.append(tk_id)
-                accumu_probs.append(p)
-                if len(candidates) >= self.beam_size:
-                    break
-        return candidates, accumu_probs, past
+    class Icy:
+        def __init__(self, model, tokenizer):
+            self.model = model
+            self.tokenizer = tokenizer
+            self.max_context_size = 200
+            self.predict_len = 5
+            self.beam_size = 8
+            self.beam_steps = 2
 
-    @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.int32)])
-    def _predict(self, context_ids):
-        context_ids = context_ids[None, :]
+        def predict(self, context):
+            context_ids = self.tokenizer.encode(context)
+            if len(context_ids) <= 1:
+                return 0, []
+            context_ids = context_ids[-self.max_context_size:]
+            print('last 2 token is: {}'.format(self.tokenizer.convert_ids_to_tokens(context_ids[-2:])))
 
-        context_ids, past, accumu_probs = self.step(
-                                    context_ids,
-                                    None,
-                                    tf.zeros(1, dtype=tf.float32))
+            # the last token may incomplete, we need to estimate it
+            tokens, probs, past = self.estimate_first(context_ids)
+            if len(tokens) == 0:
+                return 0, []
 
-        for i in tf.range(self.predict_len-1):
-            context_ids, past, accumu_probs = self.step(context_ids, past, accumu_probs)
+            past = tf.stack(past, axis=0)
+            past = select(past, tf.zeros(len(tokens), dtype=tf.int32), axis=1)
+            tokens = tf.constant(tokens, dtype=tf.int32)
+            tf_context_ids = tf.constant(context_ids[:-1], dtype=tf.int32)[tf.newaxis, :]
+            tf_context_ids = tf.tile(tf_context_ids, [len(tokens), 1])
+            tf_context_ids = tf.concat([tf_context_ids, tokens[:, tf.newaxis]], axis=-1)
+            y = self._predict(tf_context_ids, past, tf.constant(probs))
+            last_token_len = len(self.tokenizer.convert_ids_to_tokens(context_ids[-1]))
+            return last_token_len, [self.tokenizer.decode(i) for i in y.numpy()[:, -self.predict_len-1:]]
 
-        return context_ids
+        @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.int32)])
+        def get_top_k(self, context_ids):
+            context_ids = context_ids[None, :]
+            logits, past = self.model(context_ids, past=None)
+            logits = logits[:, -1]
+            probs = tf.nn.log_softmax(logits)
+            p, ix = tf.nn.top_k(probs, k=10000)  # TODO: move to param
+            return p, ix, past
 
-    def step(self, context_ids, past, accumu_probs):
-        if past is None:
-            tiled = tf.concat([context_ids]*self.beam_size, axis=0)
-            logits, past = self.model(tiled)
-            paths, tokens, accumu_probs = top_k_beams(
-                                            accumu_probs[:1],
-                                            logits[:1,-1],
-                                            self.beam_size)
-        else:
-            logits, past = self.model(context_ids[:, -1:], past=past)
-            paths, tokens, accumu_probs = top_k_beams(
-                                            accumu_probs,
-                                            logits[:, -1],
-                                            self.beam_size)
-        context_ids = select(context_ids, paths)
-        context_ids = tf.concat([context_ids, tokens[:, tf.newaxis]], axis=-1)
+        def estimate_first(self, context_ids):
+            last_token = self.tokenizer.convert_ids_to_tokens(context_ids[-1])
+            context_ids = tf.constant(context_ids[:-1], dtype=tf.int32)
+            probs, indexes, past = self.get_top_k(context_ids)
+            probs = probs.numpy().tolist()
+            indexes = indexes.numpy().tolist()
+            accumu_probs = []
+            candidates = []
+            for tk_id, p in zip(indexes[0], probs[0]):
+                token = self.tokenizer.convert_ids_to_tokens(tk_id)
+                if token.startswith(last_token):
+                    candidates.append(tk_id)
+                    accumu_probs.append(p)
+                    if len(candidates) >= self.beam_size:
+                        break
+            return candidates, accumu_probs, past
 
-        #self.print_tokens(context_ids)
+        @tf.function(input_signature=[
+                                    tf.TensorSpec(shape=[None, None], dtype=tf.int32),  # context
+                                    tf.TensorSpec(shape=get_past_shape(model.config), dtype=tf.float32),  # context
+                                    tf.TensorSpec(shape=[None], dtype=tf.float32),  # context
+                                    ])
+        def _predict(self, context_ids, past, accumu_probs):
+            past = tf.unstack(past)
 
-        return (context_ids,
-                select(past, paths),
-                accumu_probs)
+            for _ in tf.range(self.beam_steps):
+                logits, past = self.model(context_ids[:, -1:], past=past)
+                logits = logits[:, -1]
+                paths, tokens, accumu_probs = top_k_beams(accumu_probs, logits, self.beam_size)
+                context_ids = select(context_ids, paths)
+                context_ids = tf.concat([context_ids, tokens[:, tf.newaxis]], axis=-1)
+                past = tf.unstack(select(past, paths, axis=1))
 
-    def print_tokens(self, context_ids):
-        print('==========')
-        for j, line in enumerate(context_ids):
-            print(f'--{j}--')
-            print(list(line.numpy()))
-            print(self.tokenizer.decode(line.numpy()))
+            past = tuple(past)
+            for _ in tf.range(self.beam_steps, self.predict_len):
+                logits, past = self.model(context_ids[:, -1:], past=past)
+                logits = logits[:, -1]
+                tokens, accumu_probs = choose_top_1(accumu_probs, logits)
+                context_ids = tf.concat([context_ids, tokens[:, tf.newaxis]], axis=-1)
+                #self.print_tokens(context_ids)
+
+            return context_ids
+
+        def print_tokens(self, context_ids):
+            print('==========')
+            for j, line in enumerate(context_ids):
+                print(f'--{j}--')
+                print(list(line.numpy()))
+                print(self.tokenizer.decode(line.numpy()))
+
+    return Icy(model, tokenizer)
 
 
 if __name__ == '__main__':
     import time
 
-    icy = Icy('gpt2-medium')
+    icy = new_icy('gpt2-medium')
     icy.predict('x a')
 
     t0 = time.time()

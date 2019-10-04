@@ -1,15 +1,12 @@
 import time
 import json
 from bottle import Bottle, request, response
-from icyserver.icy import Icy
+from icyserver.icy import new_icy
 
 
 class App:
-    icy: Icy
-    bottle: Bottle
-
     def __init__(self):
-        self.icy = Icy('gpt2-medium')
+        self.icy = new_icy('gpt2')
         self.bottle = Bottle()
 
 
