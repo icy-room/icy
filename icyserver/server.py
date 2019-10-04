@@ -6,7 +6,7 @@ from icyserver.icy import new_icy
 
 class App:
     def __init__(self):
-        self.icy = new_icy('gpt2')
+        self.icy = new_icy('gpt2-medium')
         self.bottle = Bottle()
 
 

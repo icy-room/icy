@@ -97,7 +97,7 @@ def new_icy(model_name):
             self.model = model
             self.tokenizer = tokenizer
             self.max_context_size = 200
-            self.predict_len = 5
+            self.predict_len = 10
             self.beam_size = 8
             self.beam_steps = 2
 
@@ -106,7 +106,7 @@ def new_icy(model_name):
             if len(context_ids) <= 1:
                 return 0, []
             context_ids = context_ids[-self.max_context_size:]
-            print('last 2 token is: {}'.format(self.tokenizer.convert_ids_to_tokens(context_ids[-2:])))
+            print('The last 2 tokens are: {}'.format(self.tokenizer.convert_ids_to_tokens(context_ids[-2:])))
 
             # the last token may incomplete, we need to estimate it
             tokens, probs, past = self.estimate_first(context_ids)
