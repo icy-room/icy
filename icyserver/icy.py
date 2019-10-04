@@ -41,7 +41,6 @@ class Icy:
     def _predict(self, context_ids):
         context_ids = context_ids[None, :]
 
-
         context_ids, past, accumu_probs = self.step(
                                     context_ids,
                                     None,
