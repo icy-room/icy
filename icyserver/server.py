@@ -1,6 +1,6 @@
 import time
 import json
-from bottle import Bottle, request
+from bottle import Bottle, request, response
 from icyserver.icy import Icy
 
 
@@ -32,6 +32,9 @@ def completions():
     front_half = contents[:line_num]
     front_half[-1] = front_half[-1][:column_num-1]
     context = '\n'.join(front_half)
+    history = data.get('history')
+    if history:  # interactive bash
+        context = history + "#!bin/sh\n" + context
     t0 = time.time()
     n, items = app.icy.predict(context)
     print(f'cost {time.time()-t0} seconds')
@@ -42,6 +45,7 @@ def completions():
     result = {"completions": completions,
               "completion_start_column": max(data['column_num'] - n, 0),
               "errors": []}
+    response.set_header('Content-Type', 'application/json')
     return json.dumps(result)
 
 

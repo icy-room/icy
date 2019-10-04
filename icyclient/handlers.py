@@ -38,9 +38,14 @@ def run_completer_command():
 
 
 @app.post('/completions')
+@jsonify
 def get_completions():
-    response = requests.post('http://localhost:10086/completions', request.body.read())
-    return response.text
+    data = request.json
+    basename = os.path.basename(data['filepath'])
+    if basename.startswith('bash-fc'):
+        data['history'] = open(os.path.expanduser('~/.bash_history')).read()
+    r = requests.post('http://localhost:10086/completions', json=data)
+    return r.json()
 
 
 @app.post('/filter_and_sort_candidates')
