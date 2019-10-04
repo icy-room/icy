@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 
 import tensorflow as tf
-from transformers import TFGPT2LMHeadModel as GPT2Model, GPT2Tokenizer
 
-import tensorflow as tf
+from transformers import TFGPT2LMHeadModel as GPT2Model, GPT2Tokenizer
 
 
 def select(tensor, paths):
@@ -32,10 +31,33 @@ class Icy:
 
     def predict(self, context):
         context_ids = self.tokenizer.encode(context)
+        if len(context_ids) <= 1:
+            return 0, []
+        # the last token may incomplete, we need to estimate it
+        tokens, probs, past = self.estimate_first(context_ids)
+        return 0, tokens
         x = tf.constant(context_ids[-self.max_context_size:-1], dtype=tf.int32)
         y = self._predict(x)
         last_token_len = len(self.tokenizer.decode(context_ids[-1:]))
         return last_token_len, [self.tokenizer.decode(i) for i in y.numpy()[:, -self.predict_len:]]
+
+    def estimate_first(self, context_ids):
+        last_token = self.tokenizer.convert_ids_to_tokens(context_ids[-1])
+        context_ids = context_ids[None, :]
+        logits, past = self.model(context_ids[:, :-1], past=None)
+        logits = logits[:, -1]
+        probs = tf.nn.log_softmax(logits)
+        probs, indexes = tf.nn.top_k(probs, k=10000)
+        accumu_probs = []
+        candidates = []
+        for tk_id, p in zip(indexes[0], probs[0]):
+            token = self.tokenizer.convert_ids_to_tokens(int(tk_id))
+            if token.startswith(last_token):
+                candidates.append(tk_id)
+                accumu_probs.append(p)
+                if len(candidates) >= self.beam_size:
+                    break
+        return candidates, accumu_probs, past
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.int32)])
     def _predict(self, context_ids):
