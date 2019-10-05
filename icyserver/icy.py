@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import tensorflow as tf
+import numpy as np
 
 from transformers import TFGPT2LMHeadModel as GPT2Model, GPT2Tokenizer
 
@@ -94,14 +95,21 @@ def new_icy(model_name):
 
     class Icy:
         def __init__(self, model, tokenizer):
+            """ Create Icy with model and tokenizer.
+            Args:
+                model: GPT2Model
+                tokenizer: GPT2Tokenizer
+            """
             self.model = model
             self.tokenizer = tokenizer
             self.max_context_size = 200
-            self.predict_len = 10
+            self.predict_len = 8
             self.beam_size = 8
-            self.beam_steps = 2
+            self.beam_steps = 4
 
         def predict(self, context):
+            """ Predict the code complettion candidates from a given context.
+            """
             context_ids = self.tokenizer.encode(context)
             if len(context_ids) <= 1:
                 return 0, []
@@ -119,9 +127,10 @@ def new_icy(model_name):
             tf_context_ids = tf.constant(context_ids[:-1], dtype=tf.int32)[tf.newaxis, :]
             tf_context_ids = tf.tile(tf_context_ids, [len(tokens), 1])
             tf_context_ids = tf.concat([tf_context_ids, tokens[:, tf.newaxis]], axis=-1)
-            y = self._predict(tf_context_ids, past, tf.constant(probs))
+            y, probs = self._predict(tf_context_ids, past, tf.constant(probs))
             last_token_len = len(self.tokenizer.convert_ids_to_tokens(context_ids[-1]))
-            return last_token_len, [self.tokenizer.decode(i) for i in y.numpy()[:, -self.predict_len-1:]]
+
+            return last_token_len, [self.tokenizer.decode(i) for i in y.numpy()[:, -self.predict_len-1:]], probs.numpy()
 
         @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.int32)])
         def get_top_k(self, context_ids):
@@ -172,8 +181,7 @@ def new_icy(model_name):
                 tokens, accumu_probs = choose_top_1(accumu_probs, logits)
                 context_ids = tf.concat([context_ids, tokens[:, tf.newaxis]], axis=-1)
                 #self.print_tokens(context_ids)
-
-            return context_ids
+            return context_ids, tf.nn.softmax(accumu_probs)
 
         def print_tokens(self, context_ids):
             print('==========')
@@ -188,7 +196,7 @@ def new_icy(model_name):
 if __name__ == '__main__':
     import time
 
-    icy = new_icy('gpt2-medium')
+    icy = new_icy('./hub')
     icy.predict('x a')
 
     t0 = time.time()
@@ -204,7 +212,7 @@ def __str__(self):
     return "Cat<name=''')
 
     print('t:{}'.format(time.time() - t0))
-    for t in candidates:
+    for t, p in zip(*candidates):
         print('----')
-        print(t)
+        print(t, p)
 

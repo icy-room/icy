@@ -1,16 +1,30 @@
 import time
 import json
+from collections import OrderedDict
 from bottle import Bottle, request, response
 from icyserver.icy import new_icy
 
 
 class App:
     def __init__(self):
-        self.icy = new_icy('gpt2-medium')
+        self.icy = new_icy('./hub1000')
         self.bottle = Bottle()
 
 
 app = App()
+
+
+def filter_items(items, probs):
+    counter = OrderedDict()
+    for item, p in zip(items, probs):
+        item = item.splitlines(keepends=False)[0].rstrip()
+        if not item.strip():
+            continue
+        if item in counter:
+            counter[item] += p
+        else:
+            counter[item] = p
+    return sorted(counter.items(), key=lambda x: x[1], reverse=True)
 
 
 @app.bottle.post('/completions')
@@ -34,11 +48,13 @@ def completions():
         context = history + "#!bin/sh\n" + context
     t0 = time.time()
     print(f'context: {context}')
-    n, items = app.icy.predict(context)
-    print(f'cost {time.time()-t0} seconds, items: {items!r}')
+    n, items, probs = app.icy.predict(context)
+    print(f'cost {time.time()-t0} seconds, candidates: {items!r}')
+    items = filter_items(items, probs)
+    print(f'final candidates: {items}')
     completions = [
-        {"insertion_text": item.splitlines(keepends=False)[0]}
-            for item in items
+        {"insertion_text": item, "extra_menu_info": "{: >6.3f}".format(p*100)}
+            for item, p in items
     ]
     result = {"completions": completions,
               "completion_start_column": max(data['column_num'] - n, 0),
