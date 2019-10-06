@@ -1,8 +1,13 @@
 import time
 import json
+import logging
+
 from collections import OrderedDict
 from bottle import Bottle, request, response
 from icyserver.icy import new_icy
+
+
+logger = logging.getLogger(__name__)
 
 
 class App:
@@ -45,13 +50,13 @@ def completions():
     context = '\n'.join(front_half)
     history = data.get('history')
     if history:  # interactive bash
-        context = history + "#!bin/sh\n" + context
+        context = history + context
     t0 = time.time()
-    print(f'context: {context}')
-    n, items, probs = app.icy.predict(context)
-    print(f'cost {time.time()-t0} seconds, candidates: {items!r}')
+    logger.info(f'context: \n----\n[{context}]\n')
+    n, items, probs = app.icy.predict(context, filepath)
+    logger.info(f'cost {time.time()-t0} seconds, candidates: {items!r}')
     items = filter_items(items, probs)
-    print(f'final candidates: {items}')
+    logger.info(f'final candidates: {items}')
     completions = [
         {"insertion_text": item, "extra_menu_info": "{: >6.3f}".format(p*100)}
             for item, p in items
@@ -64,4 +69,5 @@ def completions():
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
     app.bottle.run(port=10086)

@@ -1,9 +1,14 @@
 #!/usr/bin/env python
+import os
+import logging
 
 import tensorflow as tf
 import numpy as np
 
 from transformers import TFGPT2LMHeadModel as GPT2Model, GPT2Tokenizer
+
+
+logger = logging.getLogger(__name__)
 
 
 class PatchedTokenier(GPT2Tokenizer):
@@ -103,18 +108,64 @@ def new_icy(model_name):
             self.model = model
             self.tokenizer = tokenizer
             self.max_context_size = 200
-            self.predict_len = 8
+            self.predict_len = 10
             self.beam_size = 8
             self.beam_steps = 4
 
-        def predict(self, context):
+        def get_guide_context(self, filepath):
+            if not filepath:
+                return ''
+            basename = os.path.basename(filepath)
+            ext = os.path.splitext(basename)[1]
+
+            if not ext and basename.startswith('bash-fc'):
+                ext = '.sh'
+
+            guide = {
+                '.sh': '#!/bin/sh\n',
+                '.py': 'import sys\nimport os\n',
+                '.c': '#include <time.h>\n',
+                '.h': '#include <time.h>\n',
+                '.cxx': '#include <stream>\n',
+                '.cpp': '#include <stream>\n',
+                '.cc': '#include <stream>\n',
+
+                '.rs': '''
+use std::fs::File;
+use std::io::Write;
+use std::sync::Arc;
+use std::time::Instant;
+''',
+
+                '.swift': 'import Foundation\nimport UIKit\n',
+
+                '.js': '''
+import { getjQuery } from './util/index'
+import Data from './dom/data'
+''',
+
+                '.java': '''
+import java.nio.CharBuffer;
+import java.util.Arrays;
+import java.util.Objects;
+'''
+            }
+
+            return guide.get(ext) or ''
+
+        def predict(self, context, filepath=None):
             """ Predict the code complettion candidates from a given context.
             """
+
+            if len(context.splitlines()) < 5:
+                context = self.get_guide_context(filepath) + context
+
             context_ids = self.tokenizer.encode(context)
             if len(context_ids) <= 1:
                 return 0, []
             context_ids = context_ids[-self.max_context_size:]
-            print('The last 2 tokens are: {}'.format(self.tokenizer.convert_ids_to_tokens(context_ids[-2:])))
+            logger.info('Final context: \n----\n[{}]\n'.format(self.tokenizer.decode(context_ids)))
+            logger.info('The last 2 tokens are: {}'.format(self.tokenizer.convert_ids_to_tokens(context_ids[-2:])))
 
             # the last token may incomplete, we need to estimate it
             tokens, probs, past = self.estimate_first(context_ids)
