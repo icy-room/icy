@@ -12,8 +12,11 @@ logger = logging.getLogger(__name__)
 
 class App:
     def __init__(self):
-        self.icy = new_icy('./hub1000')
+        self.model_name = './hub1000'
         self.bottle = Bottle()
+
+    def load_model(self):
+        self.icy = new_icy(self.model_name)
 
 
 app = App()
@@ -79,5 +82,13 @@ def completions():
 
 
 if __name__ == '__main__':
+    import tensorflow as tf
+
     logging.basicConfig(level=logging.DEBUG)
+
+    physical_devices = tf.config.experimental.list_physical_devices('GPU')
+    if len(physical_devices) > 0:
+        tf.config.experimental.set_memory_growth(physical_devices[0], True)
+
+    app.load_model()
     app.bottle.run(port=10086)

@@ -110,7 +110,7 @@ def new_icy(model_name):
             self.tokenizer = tokenizer
             self.max_context_size = 400
             self.predict_len = 10
-            self.beam_size = 8
+            self.beam_size = 4
             self.beam_steps = 4
 
         def get_guide_context(self, filepath):
