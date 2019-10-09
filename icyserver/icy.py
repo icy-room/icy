@@ -6,6 +6,7 @@ import tensorflow as tf
 import numpy as np
 
 from transformers import TFGPT2LMHeadModel as GPT2Model, GPT2Tokenizer
+from icyserver.common_prefix import find_common_prefix
 
 
 logger = logging.getLogger(__name__)
@@ -107,7 +108,7 @@ def new_icy(model_name):
             """
             self.model = model
             self.tokenizer = tokenizer
-            self.max_context_size = 200
+            self.max_context_size = 400
             self.predict_len = 10
             self.beam_size = 8
             self.beam_steps = 4
@@ -162,7 +163,7 @@ import java.util.Objects;
 
             context_ids = self.tokenizer.encode(context)
             if len(context_ids) <= 1:
-                return 0, []
+                return None
             context_ids = context_ids[-self.max_context_size:]
             logger.info('Final context: \n----\n[{}]\n'.format(self.tokenizer.decode(context_ids)))
             logger.info('The last 2 tokens are: {}'.format(self.tokenizer.convert_ids_to_tokens(context_ids[-2:])))
@@ -170,7 +171,7 @@ import java.util.Objects;
             # the last token may incomplete, we need to estimate it
             tokens, probs, past = self.estimate_first(context_ids)
             if len(tokens) == 0:
-                return 0, []
+                return None
 
             past = tf.stack(past, axis=0)
             past = select(past, tf.zeros(len(tokens), dtype=tf.int32), axis=1)
@@ -181,7 +182,10 @@ import java.util.Objects;
             y, probs = self._predict(tf_context_ids, past, tf.constant(probs))
             last_token_len = len(self.tokenizer.convert_ids_to_tokens(context_ids[-1]))
 
-            return last_token_len, [self.tokenizer.decode(i) for i in y.numpy()[:, -self.predict_len-1:]], probs.numpy()
+            ids = y.numpy()[:, -self.predict_len-1:]
+            prefix_ids = find_common_prefix(list(ids), min_width=4, depth=3)
+            prefix = len(prefix_ids or []) > 1 and self.tokenizer.decode(prefix_ids) or ''
+            return last_token_len, prefix, [self.tokenizer.decode(i) for i in ids], probs.numpy()
 
         @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.int32)])
         def get_top_k(self, context_ids):

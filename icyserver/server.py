@@ -53,7 +53,10 @@ def completions():
         context = history + context
     t0 = time.time()
     logger.info(f'context: \n----\n[{context}]\n')
-    n, items, probs = app.icy.predict(context, filepath)
+    result = app.icy.predict(context, filepath)
+    if result is None:
+        return '{}'
+    n, prefix, items, probs = result
     logger.info(f'cost {time.time()-t0} seconds, candidates: {items!r}')
     items = filter_items(items, probs)
     logger.info(f'final candidates: {items}')
@@ -61,6 +64,13 @@ def completions():
         {"insertion_text": item, "extra_menu_info": "{: >6.3f}".format(p*100)}
             for item, p in items
     ]
+    if prefix.strip():
+        prefix_item = {"insertion_text": prefix.rstrip()}
+        if len(completions) == 0:
+            completions.insert(0, prefix_item)
+        else:
+            completions.insert(1, prefix_item)
+
     result = {"completions": completions,
               "completion_start_column": max(data['column_num'] - n, 0),
               "errors": []}
