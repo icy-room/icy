@@ -8,7 +8,7 @@ import os
 from bottle import Bottle, request, response
 
 try:
-    ICY_SERVER = open(os.path.expanduser("~/.icy/serverurl"), 'r').read()
+    ICY_SERVER = open(os.path.expanduser("~/.icy/serverurl"), 'r').read().strip()
 except IOError as e:
     ICY_SERVER = 'http://192.168.0.84:10086/completions'
 
