@@ -7,6 +7,11 @@ import os
 
 from bottle import Bottle, request, response
 
+try:
+    ICY_SERVER = open(os.path.expanduser("~/.icy/serverurl"), 'r').read()
+except IOError as e:
+    ICY_SERVER = 'http://192.168.0.84:10086/completions'
+
 LOGGER = logging.getLogger(__name__)
 
 app = Bottle(__name__)
@@ -44,7 +49,7 @@ def get_completions():
     basename = os.path.basename(data['filepath'])
     if basename.startswith('bash-fc'):
         data['history'] = open(os.path.expanduser('~/.bash_history')).read()
-    r = requests.post('http://localhost:10086/completions', json=data)
+    r = requests.post(ICY_SERVER, json=data)
     return r.json()
 
 

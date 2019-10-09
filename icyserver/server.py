@@ -91,4 +91,4 @@ if __name__ == '__main__':
         tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
     app.load_model()
-    app.bottle.run(port=10086)
+    app.bottle.run(host='0.0.0.0', port=10086)
