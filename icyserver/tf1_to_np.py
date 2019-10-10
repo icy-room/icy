@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 
 
-def main(mdir, output):
+def main(mdir, output=None):
     """
     Convert openai gpt2 checkpoint to numpy format
     :mdir : String, which model to use
@@ -16,6 +16,12 @@ def main(mdir, output):
     import model
 
     batch_size = 1
+
+    if os.path.isdir(mdir):
+        ckpt = tf.train.latest_checkpoint(mdir)
+    else:
+        ckpt = mdir
+        mdir = os.path.dirname(mdir)
 
     hparams = model.default_hparams()
     with open(os.path.join(mdir, 'hparams.json')) as f:
@@ -27,8 +33,9 @@ def main(mdir, output):
         model.model(hparams=hparams, X=context, past=None, reuse=tf.AUTO_REUSE)
 
         saver = tf.train.Saver()
-        ckpt = tf.train.latest_checkpoint(mdir)
         saver.restore(sess, ckpt)
+        if output is None:
+            output = os.path.basename(ckpt) + '.npy'
 
         variables = tf.all_variables()
         names = [v.name for v in variables]

@@ -1,6 +1,7 @@
 import time
 import json
 import logging
+import tensorflow as tf
 
 from collections import OrderedDict
 from bottle import Bottle, request, response
@@ -12,11 +13,10 @@ logger = logging.getLogger(__name__)
 
 class App:
     def __init__(self):
-        self.model_name = './hub1000'
         self.bottle = Bottle()
 
-    def load_model(self):
-        self.icy = new_icy(self.model_name)
+    def load_model(self, model_dir, beam_width, beam_steps, steps, max_context):
+        self.icy = new_icy(model_dir, beam_width, beam_steps, steps, max_context)
 
 
 app = App()
@@ -80,9 +80,7 @@ def completions():
     response.set_header('Content-Type', 'application/json')
     return json.dumps(result)
 
-
-if __name__ == '__main__':
-    import tensorflow as tf
+def main(model_dir="./hub1000", beam_width=8, beam_steps=3, steps=10, max_context=300):
 
     logging.basicConfig(level=logging.DEBUG)
 
@@ -90,5 +88,9 @@ if __name__ == '__main__':
     if len(physical_devices) > 0:
         tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
-    app.load_model()
+    app.load_model(model_dir, beam_width, beam_steps, steps, max_context)
     app.bottle.run(host='0.0.0.0', port=10086)
+
+if __name__ == '__main__':
+    import fire
+    fire.Fire(main)

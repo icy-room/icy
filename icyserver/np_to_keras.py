@@ -25,7 +25,7 @@ def map_name(name):
     return name
 
 
-def main(base_config, npfile, outdir):
+def main(base_config, npfile, outdir=None):
     config = GPT2Config.from_pretrained(base_config)
     tokenizer = GPT2Tokenizer.from_pretrained(base_config)
     model = GPT2Model(config)
@@ -46,7 +46,8 @@ def main(base_config, npfile, outdir):
             np_w = np_w[None, :]
         weight_value_tuples.append((w, np_w))
     K.batch_set_value(weight_value_tuples)
-
+    if outdir is None:
+        outdir = os.path.basename(npfile).rsplit('.', 1)[0]
     os.makedirs(outdir, exist_ok=True)
     config.save_pretrained(outdir)
     model.save_pretrained(outdir)

@@ -95,7 +95,7 @@ def top_k_beams(accumu_probs, logits, k):
 def get_past_shape(hparams, batch_size=None, sequence=None):
     return [hparams.n_layer, batch_size, 2, hparams.n_head, sequence, hparams.n_embd // hparams.n_head]
 
-def new_icy(model_name):
+def new_icy(model_name, beam_size=8, beam_steps=3, steps=10, max_context=300):
     model = GPT2Model.from_pretrained(model_name)
     tokenizer = PatchedTokenier.from_pretrained(model_name)
 
@@ -108,10 +108,10 @@ def new_icy(model_name):
             """
             self.model = model
             self.tokenizer = tokenizer
-            self.max_context_size = 400
-            self.predict_len = 10
-            self.beam_size = 4
-            self.beam_steps = 4
+            self.max_context_size = max_context
+            self.predict_len = steps
+            self.beam_size = beam_size
+            self.beam_steps = beam_steps
 
         def get_guide_context(self, filepath):
             if not filepath:
